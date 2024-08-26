@@ -13,23 +13,3 @@ class Config:
 
     # n_days x n_hours
     agent_shape: Tuple[int, int, int] = (6, 8)
-
-
-@dataclass
-class Group:
-    index: int
-    name: str
-
-
-@dataclass
-class Subject:
-    index: int
-    name: str
-    weekly_hours: int
-
-
-@dataclass
-class Teacher:
-    index: int
-    name: str
-    is_available: bool

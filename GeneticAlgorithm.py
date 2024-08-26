@@ -93,14 +93,15 @@ class GeneticAlgorithm:
         Get a list of valid (subject, teacher, classroom) triples that can be placed
         in the given (day, hour) slot without violating constraints.
         """
+
         print("Getting valid triples...")
         valid_triples = []
-        for idx, (teacher, subject, classroom) in self.encoding.items():
+        for idx, (teacher, subject, classroom) in tqdm(self.encoding.items()):
             if not self.conflicts(agent, day, hour, teacher, classroom):
-                print(f"Valid tiple: {idx}")
+                # print(f"Valid triple: {idx}")
                 valid_triples.append(idx)
-            else:
-                print(f"Invalid tiple: {idx}")
+            # else:
+                # print(f"Invalid triple: {idx}")
 
         return valid_triples
 
