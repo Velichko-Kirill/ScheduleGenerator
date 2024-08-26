@@ -6,21 +6,22 @@ from pprint import pprint
 from typing import Dict, List, Tuple
 
 import numpy as np
+from tqdm import tqdm
 from deap import base, creator, tools
 import matplotlib.pyplot as plt
 from numpy.random import shuffle, choice
 
 from models import Config
 
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
 class GeneticAlgorithm:
     def __init__(self,
                  config: Config,
-                 population_size=100,
+                 population_size=1000,
                  crossover_prob=0.7,
                  mut_pb=0.2,
                  num_generations=50):
@@ -41,8 +42,9 @@ class GeneticAlgorithm:
 
         # Register functions to create individuals and populations
         self.toolbox.register("attr_index", random.choice, self.encoding_list)  # Fixed this line
-        self.toolbox.register("individual", tools.initRepeat, creator.Individual,
-                              self.toolbox.attr_index, n=48)  # 6 days, 8 hours => 6*8 = 48 slots
+        # self.toolbox.register("individual", tools.initRepeat, creator.Individual,
+        #                       self.toolbox.attr_index, n=48)  # 6 days, 8 hours => 6*8 = 48 slots
+        self.toolbox.register("individual", lambda: creator.Individual(self.initialize_agent().flatten()))
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
         # Register the evaluation function
@@ -125,11 +127,13 @@ class GeneticAlgorithm:
 
         # Constraint 1: No teacher should be in two places at the same time
         teacher_slots, classroom_slots = {}, {}
+        student_schedule = {day: [] for day in range(self.config.n_days)}
 
         for idx, triple_idx in enumerate(individual):
             day = idx // self.config.n_hours
             hour = idx % self.config.n_hours
             teacher, subject, classroom = self.encoding[triple_idx]
+            student_schedule[day].append(hour)
 
             # Check if teacher is already teaching at this time
             if (day, hour) in teacher_slots.get(teacher, []):
@@ -143,48 +147,75 @@ class GeneticAlgorithm:
             else:
                 classroom_slots.setdefault(classroom, []).append((day, hour))
 
-            # Additional constraints can be added here as needed
+        for day, hours in student_schedule.items():
+            if len(hours) > 1:
+                hours.sort()
+                for i in range(1, len(hours)):
+                    if hours[i] != hours[i - 1] + 1:
+                        penalty += 5  # Penalty for each gap in the schedule
+
+        logger.debug(f"Evaluated individual with penalty: {penalty}")
 
         return penalty,
 
-    def run(self):
-        pop = self.toolbox.population(n=self.population_size)
-        fitnesses = map(self.toolbox.evaluate, pop)
+    def generation_evolutionary_loop(self, population: List[List[int]]
+                                     ) -> np.ndarray[np.ndarray[np.int8]]:
+        offspring = self.toolbox.select(population, len(population))
+        offspring = list(map(self.toolbox.clone, offspring))
 
-        for ind, fit in zip(pop, fitnesses):
+        # Apply crossover and mutation
+        for child1, child2 in zip(offspring[::2], offspring[1::2]):
+            if random.random() < self.crossover_prob:
+                self.toolbox.mate(child1, child2)
+                del child1.fitness.values
+                del child2.fitness.values
+
+        for mutant in offspring:
+            if random.random() < self.mut_pb:
+                self.toolbox.mutate(mutant)
+                del mutant.fitness.values
+
+        # Evaluate the individuals with an invalid fitness
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = map(self.toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
-        # Evolutionary loop
-        for gen in range(self.num_generations):
-            # Select the next generation individuals
-            offspring = self.toolbox.select(pop, len(pop))
-            offspring = list(map(self.toolbox.clone, offspring))
+        # Replace the old population with the new one
+        population[:] = offspring
 
-            # Apply crossover and mutation
-            for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < self.crossover_prob:
-                    self.toolbox.mate(child1, child2)
-                    del child1.fitness.values
-                    del child2.fitness.values
+        # getting stats
+        fits = [ind.fitness.values[0] for ind in population]
+        length = len(population)
+        mean = sum(fits) / length
+        sum2 = sum(x * x for x in fits)
+        std = abs(sum2 / length - mean ** 2) ** 0.5
 
-            for mutant in offspring:
-                if random.random() < self.mut_pb:
-                    self.toolbox.mutate(mutant)
-                    del mutant.fitness.values
+        logger.info(f"Min: {min(fits)}")
+        logger.info(f"Max: {max(fits)}")
+        logger.info(f"Avg: {mean}")
+        logger.info(f"Std: {std}")
 
-            # Evaluate the individuals with an invalid fitness
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = map(self.toolbox.evaluate, invalid_ind)
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
+        return population
 
-            # Replace the old population with the new one
-            pop[:] = offspring
+    def run(self):
+        next_genetarion = self.toolbox.population(n=self.population_size)
+        fitnesses = map(self.toolbox.evaluate, next_genetarion)
 
-        return pop
+        for ind, fit in zip(next_genetarion, fitnesses):
+            ind.fitness.values = fit
+
+        print(type(next_genetarion))
+
+        for _ in tqdm(range(self.num_generations)):
+            next_genetarion = self.generation_evolutionary_loop(next_genetarion)
+
+        return next_genetarion
 
 
 if __name__ == "__main__":
     algo = GeneticAlgorithm(config=Config())
     population_selected = algo.run()
-    pprint(population_selected.shape)
+    pprint(dir(population_selected))
+
+    pprint(population_selected)
