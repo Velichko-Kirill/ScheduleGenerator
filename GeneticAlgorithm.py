@@ -16,16 +16,16 @@ from models import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class GeneticAlgorithm:
     def __init__(self,
                  config: Config,
-                 population_size=100,
+                 population_size=200,
                  crossover_prob=0.7,
                  mut_pb=0.2,
-                 num_generations=20):
+                 num_generations=50):
         self.config = config
         self.population_size = population_size
         self.crossover_prob = crossover_prob
@@ -73,48 +73,51 @@ class GeneticAlgorithm:
 
     def initialize_agent(self) -> np.ndarray:
         """Agent is a 6x8 (6 days, 8 hours)  matrix where each element is an index
-        in encoding dictionary"""
+        of the encoding dictionary"""
 
-        agent = np.full((self.config.n_days, self.config.n_hours), -1)
+        agent = np.full((self.config.n_groups, self.config.n_days, self.config.n_hours), -1)
+        triple_idxs = list(self.encoding.keys())
 
-        available_slots = [(day, hour) for day in range(self.config.n_days)
-                           for hour in range(self.config.n_hours)]
-        shuffle(available_slots)
+        for group in range(self.config.n_groups):
+            available_slots = [(day, hour) for day in range(self.config.n_days)
+                               for hour in range(self.config.n_hours)]
+            shuffle(available_slots)
 
-        # for day, hour in available_slots:
-            # valid_triples = self.get_valid_triples(agent, day, hour)
-            # if valid_triples:
-            #     chosen_triple = choice(valid_triples)
-            #     agent[day, hour] = chosen_triple
+            for day, hour in available_slots:
+                agent[group, day, hour] = choice(triple_idxs)
 
         return agent
 
-    def get_valid_triples(self, agent: np.ndarray, day: int, hour: int) -> list:
-        """
-        Get a list of valid (subject, teacher, classroom) triples that can be placed
-        in the given (day, hour) slot without violating constraints.
-        """
+    # def get_valid_triples(self, agent: np.ndarray, day: int, hour: int) -> list:
+    #     """
+    #     Get a list of valid (subject, teacher, classroom) triples that can be placed
+    #     in the given (day, hour) slot without violating constraints.
+    #     """
+    #
+    #     print("Getting valid triples...")
+    #     valid_triples = []
+    #     for idx, (teacher, subject, classroom) in self.encoding.items():
+    #         if not self.conflicts(agent, day, hour, teacher, classroom):
+    #             print(f"Valid tiple: {idx}")
+    #             valid_triples.append(idx)
+    #         else:
+    #             print(f"Invalid tiple: {idx}")
+    #
+    #     return valid_triples
 
-        valid_triples = []
-        for idx, (teacher, subject, classroom) in self.encoding.items():
-            if not self.conflicts(agent, day, hour, teacher, classroom):
-                valid_triples.append(idx)
-
-        return valid_triples
-
-    def conflicts(self, agent: np.ndarray, day: int, hour: int, teacher: int, classroom: int) -> bool:
-        """
-        Check if placing a (teacher, classroom) at (day, hour) conflicts with the current agent's state.
-        """
-        # print("Checking for conflicts...")
-
-        for h in range(self.config.n_hours):
-            if agent[day, h] != -1:  # Check only if the slot is filled
-                existing_teacher, _, existing_classroom = self.encoding[agent[day, h]]
-                if existing_teacher == teacher or existing_classroom == classroom:
-                    return True
-
-        return False
+    # def conflicts(self, agent: np.ndarray, day: int, hour: int, teacher: int, classroom: int) -> bool:
+    #     """
+    #     Check if placing a (teacher, classroom) at (day, hour) conflicts with the current agent's state.
+    #     """
+    #     # print("Checking for conflicts...")
+    #
+    #     for h in range(self.config.n_hours):
+    #         if agent[day, h] != -1:  # Check only if the slot is filled
+    #             existing_teacher, _, existing_classroom = self.encoding[agent[day, h]]
+    #             if existing_teacher == teacher or existing_classroom == classroom:
+    #                 return True
+    #
+    #     return False
 
     def evaluate_schedule(self, individual):
         """
@@ -128,9 +131,11 @@ class GeneticAlgorithm:
         student_schedule = {day: [] for day in range(self.config.n_days)}
 
         for idx, triple_idx in enumerate(individual):
-            day = idx // self.config.n_hours
+
+            day = idx % self.config.n_days
             hour = idx % self.config.n_hours
             teacher, subject, classroom = self.encoding[triple_idx]
+
             student_schedule[day].append(hour)
 
             # Check if teacher is already teaching at this time
@@ -190,21 +195,22 @@ class GeneticAlgorithm:
         logger.info(f"Max: {max(fits)}")
         logger.info(f"Avg: {mean}")
         logger.info(f"Std: {std}")
-        gc.collect()
 
         return population
 
     def run(self):
-        next_genetarion = self.toolbox.population(n=self.population_size)
-        fitnesses = map(self.toolbox.evaluate, next_genetarion)
+        next_generation = self.toolbox.population(n=self.population_size)
+        fitnesses = map(self.toolbox.evaluate, next_generation)
 
-        for ind, fit in zip(next_genetarion, fitnesses):
+        for ind, fit in zip(next_generation, fitnesses):
             ind.fitness.values = fit
 
-        for _ in tqdm(range(self.num_generations)):
-            next_genetarion = self.generation_evolutionary_loop(next_genetarion)
+        print(type(next_generation))
 
-        return next_genetarion
+        for _ in tqdm(range(self.num_generations)):
+            next_generation = self.generation_evolutionary_loop(next_generation)
+
+        return next_generation
 
 
 if __name__ == "__main__":
