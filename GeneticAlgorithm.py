@@ -1,3 +1,4 @@
+import gc
 import logging
 import random
 from itertools import product
@@ -21,10 +22,10 @@ logger.setLevel(logging.DEBUG)
 class GeneticAlgorithm:
     def __init__(self,
                  config: Config,
-                 population_size=1000,
+                 population_size=100,
                  crossover_prob=0.7,
                  mut_pb=0.2,
-                 num_generations=50):
+                 num_generations=20):
         self.config = config
         self.population_size = population_size
         self.crossover_prob = crossover_prob
@@ -72,7 +73,7 @@ class GeneticAlgorithm:
 
     def initialize_agent(self) -> np.ndarray:
         """Agent is a 6x8 (6 days, 8 hours)  matrix where each element is an index
-        of the encoding dictionary"""
+        in encoding dictionary"""
 
         agent = np.full((self.config.n_days, self.config.n_hours), -1)
 
@@ -80,11 +81,11 @@ class GeneticAlgorithm:
                            for hour in range(self.config.n_hours)]
         shuffle(available_slots)
 
-        for day, hour in available_slots:
-            valid_triples = self.get_valid_triples(agent, day, hour)
-            if valid_triples:
-                chosen_triple = choice(valid_triples)
-                agent[day, hour] = chosen_triple
+        # for day, hour in available_slots:
+            # valid_triples = self.get_valid_triples(agent, day, hour)
+            # if valid_triples:
+            #     chosen_triple = choice(valid_triples)
+            #     agent[day, hour] = chosen_triple
 
         return agent
 
@@ -94,14 +95,10 @@ class GeneticAlgorithm:
         in the given (day, hour) slot without violating constraints.
         """
 
-        print("Getting valid triples...")
         valid_triples = []
-        for idx, (teacher, subject, classroom) in tqdm(self.encoding.items()):
+        for idx, (teacher, subject, classroom) in self.encoding.items():
             if not self.conflicts(agent, day, hour, teacher, classroom):
-                # print(f"Valid triple: {idx}")
                 valid_triples.append(idx)
-            # else:
-                # print(f"Invalid triple: {idx}")
 
         return valid_triples
 
@@ -168,13 +165,10 @@ class GeneticAlgorithm:
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
             if random.random() < self.crossover_prob:
                 self.toolbox.mate(child1, child2)
-                del child1.fitness.values
-                del child2.fitness.values
 
         for mutant in offspring:
             if random.random() < self.mut_pb:
                 self.toolbox.mutate(mutant)
-                del mutant.fitness.values
 
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
@@ -196,6 +190,7 @@ class GeneticAlgorithm:
         logger.info(f"Max: {max(fits)}")
         logger.info(f"Avg: {mean}")
         logger.info(f"Std: {std}")
+        gc.collect()
 
         return population
 
@@ -206,8 +201,6 @@ class GeneticAlgorithm:
         for ind, fit in zip(next_genetarion, fitnesses):
             ind.fitness.values = fit
 
-        print(type(next_genetarion))
-
         for _ in tqdm(range(self.num_generations)):
             next_genetarion = self.generation_evolutionary_loop(next_genetarion)
 
@@ -217,6 +210,4 @@ class GeneticAlgorithm:
 if __name__ == "__main__":
     algo = GeneticAlgorithm(config=Config())
     population_selected = algo.run()
-    pprint(dir(population_selected))
-
     pprint(population_selected)
