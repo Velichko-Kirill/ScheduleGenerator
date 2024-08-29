@@ -1,11 +1,11 @@
-import logging
-import random
+import logging, random, pickle
 from itertools import product
 from pathlib import Path
 from pprint import pprint
 from typing import Dict, List, Tuple
 
 import numpy as np
+from openpyxl import Workbook
 from tqdm import tqdm
 from deap import base, creator, tools
 import matplotlib.pyplot as plt
@@ -16,6 +16,8 @@ from models import Config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
 
 
 class GeneticAlgorithm:
@@ -76,15 +78,15 @@ class GeneticAlgorithm:
 
         agent = np.full((self.config.n_days, self.config.n_hours), -1)
 
-        available_slots = [(day, hour) for day in range(self.config.n_days)
-                           for hour in range(self.config.n_hours)]
-        shuffle(available_slots)
+        for day in range(self.config.n_days):
+            available_slots = [(day, hour) for hour in range(self.config.n_hours)]
+            shuffle(available_slots)
 
-        for day, hour in available_slots:
-            valid_triples = self.get_valid_triples(agent, day, hour)
-            if valid_triples:
-                chosen_triple = choice(valid_triples)
-                agent[day, hour] = chosen_triple
+            for day, hour in available_slots:
+                valid_triples = self.get_valid_triples(agent, day, hour)
+                if valid_triples:
+                    chosen_triple = choice(valid_triples)
+                    agent[day, hour] = chosen_triple
 
         return agent
 
@@ -153,7 +155,7 @@ class GeneticAlgorithm:
                 hours.sort()
                 for i in range(1, len(hours)):
                     if hours[i] != hours[i - 1] + 1:
-                        penalty += 5  # Penalty for each gap in the schedule
+                        penalty += 5  # Penalty for each selfp in the schedule
 
         logger.debug(f"Evaluated individual with penalty: {penalty}")
 
@@ -212,11 +214,35 @@ class GeneticAlgorithm:
             next_genetarion = self.generation_evolutionary_loop(next_genetarion)
 
         return next_genetarion
+    
+def save_results_to_dat(population, filename="results.dat"):
+    with open(filename, 'wb') as f:
+        pickle.dump(population, f)
+    print(f"Results saved to {filename}")
+
+def load_results_from_dat(filename="results.dat"):
+    try:
+        with open(filename, 'rb') as f:
+            population = pickle.load(f)
+        print(f"Results loaded from {filename}")
+        return population
+    except FileNotFoundError:
+        print(f"File {filename} not found. Running genetic algorithm...")
+        return None
 
 
 if __name__ == "__main__":
     algo = GeneticAlgorithm(config=Config())
-    population_selected = algo.run()
-    pprint(dir(population_selected))
-
-    pprint(population_selected)
+    
+    # Попытка загрузить результаты из DAT-файла
+    population_selected = load_results_from_dat()
+    
+    if population_selected is None:
+        # Если результаты не загружены, запускаем генетический алгоритм
+        algo.print_genetic_algorithm_info()
+        population_selected = algo.run()
+        
+        # Сохраняем результаты в DAT-файл
+        save_results_to_dat(population_selected)
+    
+    best_individual = tools.selBest(population_selected, 1)[0]
